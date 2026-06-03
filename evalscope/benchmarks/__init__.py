@@ -26,3 +26,38 @@ for file_path in files:
         end_time = time.perf_counter()
 
         import_times.append((full_path, end_time - start_time))
+
+
+def _load_plugin_benchmarks():
+    """Import out-of-tree benchmark providers so their @register_benchmark fires.
+
+    Two discovery channels, both optional:
+      * the ``EVALSCOPE_PLUGINS`` env var: a comma-separated list of importable
+        module names (e.g. ``EVALSCOPE_PLUGINS=evalscope_ext``);
+      * the ``evalscope.plugins`` entry-point group, for installed packages.
+
+    This lets an extension such as ``evalscope_ext`` register ``*_pruned``
+    benchmarks with the CLI without editing the in-tree glob above.
+    """
+    modules = [m.strip() for m in os.environ.get('EVALSCOPE_PLUGINS', '').split(',') if m.strip()]
+    for name in modules:
+        try:
+            importlib.import_module(name)
+        except Exception as exc:  # pragma: no cover - depends on user env
+            logger.warning(f'Failed to import EVALSCOPE_PLUGINS module {name!r}: {exc}')
+
+    try:
+        from importlib.metadata import entry_points
+
+        eps = entry_points()
+        group = eps.select(group='evalscope.plugins') if hasattr(eps, 'select') else eps.get('evalscope.plugins', [])
+        for ep in group:
+            try:
+                ep.load()
+            except Exception as exc:  # pragma: no cover
+                logger.warning(f'Failed to load evalscope.plugins entry point {ep!r}: {exc}')
+    except Exception:  # pragma: no cover
+        pass
+
+
+_load_plugin_benchmarks()

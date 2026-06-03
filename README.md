@@ -1,3 +1,74 @@
+<!-- ════════════════════════════════════════════════════════════════════════
+     FORK NOTE — evalscope_ext: benchmark pruning extension
+     ════════════════════════════════════════════════════════════════════════ -->
+
+# Fork: `evalscope_ext` — benchmark pruning
+
+> **This is a fork of [`modelscope/evalscope`](https://github.com/modelscope/evalscope),
+> developed against upstream commit
+> [`c14dbaf94e9129f7054ad4a184c2ff0cae2e6a5d`](https://github.com/modelscope/evalscope/commit/c14dbaf94e9129f7054ad4a184c2ff0cae2e6a5d).**
+> The only additions are the [`evalscope_ext/`](evalscope_ext/) package and a small
+> plugin-discovery hook in [`evalscope/benchmarks/__init__.py`](evalscope/benchmarks/__init__.py).
+> Upstream's own README follows below.
+
+`evalscope_ext` prunes a benchmark to the **smallest sample subset that still preserves the
+go/no-go verdict** for an unseen model, so a sales/deployment team gets a fast
+"is this model good enough?" answer at ~10% of the eval cost.
+
+**Why it works (validated, leave-one-model-out, keep 10%):** a `difficulty_stratified` subset
+estimates a *held-out* model's true LiveCodeBench score to **MAE 0.009 — 86% better than
+uniform random** (the forbidden top-k-hardest baseline: 0.42). See [`HANDOUT_A.md`](HANDOUT_A.md)
+(technical) and [`HANDOUT_B.md`](HANDOUT_B.md) (how to run it / why it matters).
+
+### Install
+
+```bash
+pip install -e .            # installs evalscope + evalscope_ext from this fork
+# Python 3.10–3.12 recommended (some upstream deps lack 3.13/3.14 wheels).
+```
+
+The pruned benchmarks self-register with the CLI via an `evalscope.plugins` entry point. If
+running from a source checkout without installing, set `EVALSCOPE_PLUGINS=evalscope_ext`.
+
+### Run contract
+
+```bash
+# full baseline
+evalscope eval --model <model> --datasets live_code_bench --output ./results_full/
+
+# pruned run (10%); strategies: balanced | difficulty_stratified | discrimination | diversity | judge_noise_aware
+evalscope eval --model <model> --datasets live_code_bench_pruned \
+    --dataset-args '{"pruning_strategy": "difficulty_stratified", "prune_ratio": 0.1}' \
+    --output ./results_pruned/
+
+# did the subset preserve the verdict?
+python -m evalscope_ext.tools.compare_runs --full ./results_full/ --pruned ./results_pruned/
+```
+
+Pruned variants: `live_code_bench_pruned`, `aa_lcr_pruned`, `mmmu_pruned`. Args may also be
+nested under `extra_params` (the evalscope-idiomatic form). Reproduce the validation numbers:
+`python -m evalscope_ext.tools.validate_offline --evals "<Evals/Part 1>" --ratio 0.1`.
+
+### Layout & tests
+
+```
+evalscope_ext/
+  pruning/      base.py · registry.py · signals.py · strategies/{stratified,discrimination,diversity,judge_noise,composite}.py
+  integration/  mixin.py (PruningMixin) · adapters.py (the *_pruned benchmarks)
+  tools/        compare_runs.py · validate_offline.py · build_signals.py
+  data/signals/ live_code_bench.json · aa_lcr.json   (compact cached reference signals)
+  tests/        46 tests — strategies, registry, signals, compare_runs, real-data validation, evalscope integration
+```
+
+```bash
+python -m pytest evalscope_ext/tests/ -q
+```
+
+The pruning core (`evalscope_ext.pruning`) is dependency-light (stdlib + numpy) and testable
+without a full evalscope install; the integration tests `importorskip('evalscope')`.
+
+---
+
 <p align="center">
     <br>
     <img src="docs/en/_static/images/evalscope_logo.png"/>

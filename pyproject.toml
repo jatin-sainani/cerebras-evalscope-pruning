@@ -25,6 +25,11 @@ Homepage = "https://github.com/modelscope/evalscope"
 [project.scripts]
 evalscope = "evalscope.cli.cli:run_cmd"
 
+# evalscope_ext (dataset pruning) auto-registers its pruned benchmarks with the
+# CLI via this entry point — no manual import or env var needed once installed.
+[project.entry-points."evalscope.plugins"]
+pruning = "evalscope_ext"
+
 [build-system]
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -34,6 +39,7 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 "evalscope.web" = ["dist/**/*"]
+"evalscope_ext" = ["data/signals/*.json"]
 
 [tool.setuptools.packages.find]
 where = ["."]
