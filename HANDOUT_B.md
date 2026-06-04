@@ -46,8 +46,11 @@ handful of OCR-heavy, high-resolution, or multi-image cases that actually stress
 and mixes encoder failures with ordinary reasoning mistakes. The probe **deliberately covers
 each visual-stress type** and **isolates the encoder** by comparing each hard-visual question
 against a matched easy-visual control: the gap between them is encoder quality, not reasoning
-quality. Random sampling can tell you a model's average multimodal score; it cannot tell you
-*why* it failed or whether the encoder specifically will hold up on the customer's images.
+quality. It already runs on the shipped data — and even with one reference model it shows the
+encoder is weakest on fine-grained domain imagery (0.60 accuracy) versus everyday photos
+(0.82), the kind of axis-level finding random sampling averages away. Random sampling can tell
+you a model's average multimodal score; it cannot tell you *why* it failed or whether the
+encoder specifically will hold up on the customer's images.
 
 ## Why a customer-facing PM should care
 

@@ -62,25 +62,36 @@ saves the most. **Recommendation:** `difficulty_stratified` for an absolute go/n
 (unbiased estimate); `discrimination` when the question is *ranking* candidates; `balanced`
 when you want one robust default.
 
-## Part B — a forward-looking MMMU image-encoder probe
+## Part B — MMMU image-encoder probe (working code)
 
 Goal: through the **standard OpenAI chat (`image_url`) interface only**, tell whether a
 candidate's *vision encoder* (not its text reasoning) is good enough. Generic MMMU accuracy
-conflates the two. The design (reusing the same machinery; `mmmu_pruned` is wired, the probe
-selector is specified in `evalscope_ext/tools/` design notes):
+conflates the two. Implemented in `evalscope_ext/tools/mmmu_probe.py` + the registered
+`mmmu_encoder_probe` strategy — it runs on the shipped data offline and against a live
+endpoint:
 
-1. **Tag all ~12K `MMMU/MMMU` items along encoder-stress axes**, cheaply and model-free:
-   native resolution / downscale loss, **text-in-image / OCR load** (OCR token count),
-   fine-grained detail & counting, multi-image cross-binding, and chart/diagram density.
-2. **Select an axis-balanced probe** with the stratified+diversity strategies so every stress
-   axis is covered (random sampling drowns these — OCR-heavy or multi-image items are a small
-   fraction of 12K and would barely appear).
-3. **Measure the encoder, not the reasoner, by paired contrast:** for each hard-visual item,
-   pair it with a control that needs the *same* reasoning but minimal visual fidelity (e.g.
-   the same question with the key fact given as text, or a clean high-res render). The
-   per-axis **accuracy gap (hard − control)** isolates encoder degradation: a model that
-   collapses on OCR/high-res items but holds on controls has a weak encoder, independent of
-   its reasoning ability. Report per-axis gaps + an aggregate encoder-quality index.
+1. **Tag every item by encoder-stress axis** from MMMU's own `img_type` field (no model
+   needed): *text-in-image* (Tables, Screenshots, …), *chart/diagram* (Diagrams, Plots,
+   Blueprints), *fine-grained* (Medical, Microscopic, Pathological, Chemical), *multi-image*
+   (image count > 1), *natural* (Photographs, Paintings). The 30+ MMMU categories map onto
+   these five axes.
+2. **Select an axis-balanced, difficulty-spread probe** with the `mmmu_encoder_probe`
+   strategy (same registry/mixin as Part A). Uniform sampling of 12K buries the stressing
+   categories — fine-grained and multi-image are a small slice; balancing guarantees each
+   failure mode is probed. Runs in-framework: `--datasets mmmu_pruned
+   --dataset-args '{"pruning_strategy":"mmmu_encoder_probe","prune_ratio":0.05}'`.
+3. **Measure the encoder by paired contrast** (`measure_encoder`): each hard-visual item is
+   asked twice through `image_url` — once with the real image, once with a text-only control
+   that conveys the same reasoning content (the MMMU explanation) with no image. The per-axis
+   **gap = acc(control) − acc(hard)** isolates encoder degradation; the aggregate
+   **encoder-quality index = 1 − mean gap**.
+
+**Already-visible signal (offline, shipped reference model, no live calls):** per-axis
+accuracy is **fine-grained 0.60 · multi-image 0.68 · chart/diagram 0.68 · text-in-image 0.72
+· natural 0.82** — the encoder is weakest on fine-grained domain imagery, **22 points** below
+natural images. That ordering is the encoder-stress signal the probe is built to expose, and
+uniform sampling (weighted to the common chart/natural categories) would wash it out. The
+live paired contrast turns each axis into a clean hard-vs-control gap for a candidate model.
 
 ## Assumptions
 

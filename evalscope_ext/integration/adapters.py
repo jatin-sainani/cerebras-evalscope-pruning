@@ -9,6 +9,7 @@ benchmark is trivial and there are no per-dataset hacks.
 from __future__ import annotations
 
 import copy
+from typing import Optional
 
 from evalscope.api.benchmark import BenchmarkMeta
 from evalscope.api.registry import BENCHMARK_REGISTRY, register_benchmark
@@ -62,8 +63,28 @@ def _make_pruned_meta(base_name: str, new_name: str) -> BenchmarkMeta:
     return meta
 
 
-def _register_pruned(base_name: str, base_cls: type) -> None:
-    """Register ``<base_name>_pruned`` = PruningMixin + base adapter."""
+def register_pruned_benchmark(base_name: str, base_cls: Optional[type] = None) -> type:
+    """Register ``<base_name>_pruned`` for **any** evalscope benchmark — universal.
+
+    This is the whole story of how pruning attaches to a benchmark: there is no
+    per-dataset code. Given a registered benchmark name, we derive its meta, add the
+    prune params, and register ``PruningMixin`` composed over its adapter. Works for
+    LiveCodeBench, AA-LCR, MMMU, or a benchmark we've never seen — one call:
+
+        register_pruned_benchmark('gpqa')   # -> 'gpqa_pruned'
+
+    Args:
+        base_name: the registered base benchmark name.
+        base_cls:  its adapter class; if omitted, taken from the registry (so the base
+                   module must already be imported).
+    Returns:
+        the newly registered pruned adapter class.
+    """
+    if base_cls is None:
+        if base_name not in BENCHMARK_REGISTRY:
+            raise KeyError(f'Base benchmark {base_name!r} is not registered; import it first.')
+        base_cls = BENCHMARK_REGISTRY[base_name].data_adapter
+
     new_name = f'{base_name}_pruned'
     meta = _make_pruned_meta(base_name, new_name)
 
@@ -74,15 +95,16 @@ def _register_pruned(base_name: str, base_cls: type) -> None:
     _PrunedAdapter.__name__ = f'{base_cls.__name__}Pruned'
     _PrunedAdapter.__qualname__ = _PrunedAdapter.__name__
     logger.info(f'[prune] registered benchmark {new_name!r}.')
+    return _PrunedAdapter
 
 
-# Register each variant independently so one missing base benchmark (e.g. a
-# vision dep for MMMU) doesn't block the others.
+# Register the variants the challenge cares about. Each is independent so a missing
+# base benchmark (e.g. a vision dep for MMMU) doesn't block the others. Adding more is
+# a one-liner — the mechanism is benchmark-agnostic.
 def _safe_register(base_name: str, import_path: str, cls_name: str) -> None:
     try:
         module = __import__(import_path, fromlist=[cls_name])
-        base_cls = getattr(module, cls_name)
-        _register_pruned(base_name, base_cls)
+        register_pruned_benchmark(base_name, getattr(module, cls_name))
     except Exception as exc:  # pragma: no cover - depends on optional deps
         logger.warning(f'[prune] could not register {base_name}_pruned: {exc}')
 

@@ -45,19 +45,51 @@ evalscope eval --model <model> --datasets live_code_bench_pruned \
 python -m evalscope_ext.tools.compare_runs --full ./results_full/ --pruned ./results_pruned/
 ```
 
-Pruned variants: `live_code_bench_pruned`, `aa_lcr_pruned`, `mmmu_pruned`. Args may also be
-nested under `extra_params` (the evalscope-idiomatic form). Reproduce the validation numbers:
+Pruned variants ship for `live_code_bench`, `aa_lcr`, `mmmu`. Args may also be nested under
+`extra_params` (the evalscope-idiomatic form). Reproduce the validation numbers:
 `python -m evalscope_ext.tools.validate_offline --evals "<Evals/Part 1>" --ratio 0.1`.
+
+**Universal, not per-benchmark.** There is no dataset-specific pruning code: one call wraps
+*any* registered benchmark.
+
+```python
+from evalscope_ext.integration import register_pruned_benchmark
+register_pruned_benchmark('gpqa')        # -> 'gpqa_pruned', ready for --datasets
+```
+
+### Part B — MMMU image-encoder probe (working)
+
+Generic MMMU accuracy conflates reasoning with *image-encoder* quality. The probe tags every
+item by encoder-stress axis (from MMMU's `img_type`: text-in-image, charts/diagrams,
+fine-grained, multi-image, natural), selects an **axis-balanced, difficulty-spread** set via
+the registered `mmmu_encoder_probe` strategy, and isolates the encoder with a paired
+**hard-vs-control** contrast through the OpenAI image interface (per-axis accuracy gap).
+
+```bash
+# offline: tag + select + per-axis reference accuracy on the shipped data (no model calls)
+python -m evalscope_ext.tools.mmmu_probe --evals "<Evals/MMMU>" --per-axis 8
+
+# in-framework: select the probe as a pruned dataset
+evalscope eval --model <vlm> --datasets mmmu_pruned \
+    --dataset-args '{"pruning_strategy": "mmmu_encoder_probe", "prune_ratio": 0.05}'
+
+# live: paired hard-vs-control measurement against an OpenAI-compatible vision endpoint
+python -m evalscope_ext.tools.mmmu_probe --measure --hf-subjects Math Accounting \
+    --per-axis 5 --base-url <url> --model <vlm>
+```
+
+On the shipped reference model the probe already surfaces the encoder's weak axis:
+**fine-grained imagery 0.60 vs natural images 0.82** — a gap uniform sampling would dilute.
 
 ### Layout & tests
 
 ```
 evalscope_ext/
-  pruning/      base.py · registry.py · signals.py · strategies/{stratified,discrimination,diversity,judge_noise,composite}.py
-  integration/  mixin.py (PruningMixin) · adapters.py (the *_pruned benchmarks)
-  tools/        compare_runs.py · validate_offline.py · build_signals.py
+  pruning/      base.py · registry.py · signals.py · strategies/{stratified,discrimination,diversity,judge_noise,composite,mmmu_encoder}.py
+  integration/  mixin.py (PruningMixin) · adapters.py (register_pruned_benchmark + the *_pruned benchmarks)
+  tools/        compare_runs.py · validate_offline.py · build_signals.py · mmmu_probe.py
   data/signals/ live_code_bench.json · aa_lcr.json   (compact cached reference signals)
-  tests/        46 tests — strategies, registry, signals, compare_runs, real-data validation, evalscope integration
+  tests/        53 tests — strategies, registry, signals, compare_runs, MMMU probe, real-data validation, evalscope integration (incl. universality)
 ```
 
 ```bash

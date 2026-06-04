@@ -30,6 +30,25 @@ def test_mixin_in_mro():
     assert PruningMixin in adapter_cls.__mro__
 
 
+def test_pruner_is_universal_across_benchmarks():
+    """One call wraps ANY registered benchmark — no per-dataset code."""
+    import evalscope  # noqa: F401  (ensures base benchmarks are registered)
+    from evalscope.api.registry import BENCHMARK_REGISTRY
+    from evalscope_ext.integration import register_pruned_benchmark
+    from evalscope_ext.integration.mixin import PruningMixin
+
+    # Pick an arbitrary registered text benchmark that we did NOT pre-wire.
+    candidates = [n for n in BENCHMARK_REGISTRY
+                  if not n.endswith('_pruned') and n not in {'live_code_bench', 'aa_lcr', 'mmmu'}]
+    assert candidates, 'expected other registered benchmarks to exist'
+    base = sorted(candidates)[0]
+
+    cls = register_pruned_benchmark(base)
+    assert f'{base}_pruned' in BENCHMARK_REGISTRY
+    assert PruningMixin in cls.__mro__
+    assert 'pruning_strategy' in BENCHMARK_REGISTRY[f'{base}_pruned'].extra_params
+
+
 def test_prune_config_reads_top_level_and_extra_params():
     """The literal run-contract (top-level) form and extra_params form both resolve."""
     import evalscope_ext.integration  # noqa: F401

@@ -5,5 +5,6 @@ from evalscope_ext.pruning.strategies import (  # noqa: F401
     discrimination,
     diversity,
     judge_noise,
+    mmmu_encoder,
     stratified,
 )
